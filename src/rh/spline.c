@@ -154,8 +154,8 @@ void splineHermite(int const N, double* const x, double* const y, int const N1, 
     
   for(n=n0; n != n1; n+= dn){
     dx = x[n+dn]-x[n];
-    ypu = yp[n];
-    ypc = yp[n+dn];
+    ypu = yp[n]*dx;
+    ypc = yp[n+dn]*dx;
     
     for(j=j0; j != j1+dj; j += dj){
       if((x1[j] <= x[n+dn]) && (x1[j] > x[n])){
