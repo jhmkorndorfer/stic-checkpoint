@@ -184,8 +184,12 @@ double cent_deriv(double odx,double dx,
   
   const double S0 = (yd - y0) / dx;
   const double Su = (y0 - yu) / odx;
+
+  const double sS0  = ((S0 >= 0) ? 1.0 : -1.0); //signFortran(S0);
+  const double sSu  = ((Su >= 0) ? 1.0 : -1.0); //signFortran(Su);
+  
   const double P0 = fabs((Su*dx + S0*odx) / (odx+dx)) * 0.5;
-  return (signFortran(S0) + signFortran(Su)) * min(fabs(Su),min(fabs(S0), P0));
+  return (sS0 + sSu) * min(sSu*Su,min(sS0*S0, P0));
 }
 
 /* --------------------------------------------------------------- */
@@ -194,11 +198,38 @@ void cent_deriv_mat(double wprime[4][4], double dsup, double dsdn,
 			   double chiup[4][4], double chic[4][4], double chidn[4][4])
 {
   register int i,j;
+
+  // --- We know that there are only 7 independent elements --- //
+
+  double const dki = cent_deriv(dsup, dsdn, chiup[0][0], chic[0][0], chidn[0][0]);  
+  double const dkq = cent_deriv(dsup, dsdn, chiup[0][1], chic[0][1], chidn[0][1]);  
+  double const dku = cent_deriv(dsup, dsdn, chiup[0][2], chic[0][2], chidn[0][2]);  
+  double const dkv = cent_deriv(dsup, dsdn, chiup[0][3], chic[0][3], chidn[0][3]);  
+  double const drq =  cent_deriv(dsup, dsdn, chiup[2][3], chic[2][3], chidn[2][3]);
+  double const dru =  cent_deriv(dsup, dsdn, chiup[3][1], chic[3][1], chidn[3][1]);
+  double const drv =  cent_deriv(dsup, dsdn, chiup[1][2], chic[1][2], chidn[1][2]);
+
+
+  wprime[0][0] = dki;
+  wprime[0][1] = dkq;
+  wprime[0][2] = dku;
+  wprime[0][3] = dkv;
   
-  for(j=0;j<4;j++)
-    for(i=0;i<4;i++)
-      wprime[j][i] = cent_deriv(dsup, dsdn, chiup[j][i], chic[j][i], chidn[j][i]);
+  wprime[1][0] = dkq;
+  wprime[1][1] = dki;
+  wprime[1][2] = drv;
+  wprime[1][3] = -dru;
   
+  wprime[2][0] = dku;
+  wprime[2][1] = -drv;
+  wprime[2][2] = dki;
+  wprime[2][3] = drq;
+  
+  wprime[3][0] = dkv;
+  wprime[3][1] = dru;
+  wprime[3][2] = -drq;
+  wprime[3][3] = dki;
+   
 }
 
 /* -------------------------------------------------------------------------- */
@@ -220,11 +251,17 @@ void cent_deriv_vec(double wprime[4], double dsup, double dsdn,
  void m4m(double a[4][4], double b[4][4], double c[4][4])
 {
   register int i, j, k;
-  memset(&c[0][0],0,sizeof(double)*16);
-  for(j = 0; j<4; j++)
-    for(i = 0; i<4; i++)
-      for(k = 0; k<4; k++)
-	c[j][i] += a[k][i]*b[j][k]; 
+  double suma = 0.0;
+  
+  for(j = 0; j<4; j++){
+    for(i = 0; i<4; i++){
+      suma = 0.0;
+      for(k = 0; k<4; k++){
+        suma += a[k][i]*b[j][k];
+      }
+      c[j][i] = suma;
+    }
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -234,10 +271,14 @@ void cent_deriv_vec(double wprime[4], double dsup, double dsdn,
 
 inline void m4v(double a[4][4], double b[4], double c[4]){
   register int k, i;
-  memset(&c[0],0,sizeof(double)*4);
-  for(i = 0; i<4; i++)
+  double suma = 0.0;
+  for(i = 0; i<4; i++){
+    suma = 0.0;
     for(k = 0; k<4; k++)
-      c[i] += ((double)a[i][k]) * b[k];
+      suma += ((double)a[i][k]) * b[k];
+    c[i] = suma;
+    
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -266,13 +307,13 @@ inline void Bezier3_coeffs(double dt, double *alpha, double *beta,
      
      --- */
   
-  double dt2 = dt*dt, dt3 = dt2 * dt;//,  dt4;
+  double dt2 = dt*dt, dt3 = dt2 * dt; //,  dt4;
   if(dt < 0.05){
-    *eps =   1.0 - dt + 0.50 * dt2 - dt3 *  0.166666666666666666666666667;
-    *alpha = 0.25 * dt - 0.20 * dt2 + dt3 * 0.083333333333333333333333333;// - dt4 / 840.0;
-    *beta  = 0.25 * dt - 0.05 * dt2 + dt3 * 0.008333333333333333333333333;//  - dt4 / 42.0;
-    *gamma = 0.25 * dt - 0.15 * dt2 + dt3 * 0.050;// - dt4 / 210.0;
-    *theta = 0.25 * dt - 0.10 * dt2 + dt3 * 0.025;// - dt4 / 84.0;
+    *eps =   1.0 - dt + 0.50 * dt2;// - dt3 *  0.166666666666666666666666667;
+    *alpha = 0.25 * dt - 0.20 * dt2;// + dt3 * 0.083333333333333333333333333;// - dt4 / 840.0;
+    *beta  = 0.25 * dt - 0.05 * dt2;// + dt3 * 0.008333333333333333333333333;//  - dt4 / 42.0;
+    *gamma = 0.25 * dt - 0.15 * dt2;// + dt3 * 0.050;// - dt4 / 210.0;
+    *theta = 0.25 * dt - 0.10 * dt2;// + dt3 * 0.025;// - dt4 / 84.0;
     return;
   }else{
     if((dt > 30.)){
@@ -314,8 +355,8 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
   int    Ndep = geometry.Ndep, k_start, k_end, dk, k_last, ref_index;
   double dtau_uw, dtau_dw = 0.0, c1, c2, w[3], dsdn2, dchi_dn,
     I_upw[4], Bnu[2];
-  double dchi_up,dchi_c,dt03;
-  double dsup,dsdn,dt,eps=0,alpha=0,beta=0,gamma=0,theta=0;
+  double dchi_up,dchi_c,dt03, suma=0;
+  double dsup,dsdn,dt,eps=0,alpha=0,beta=0,gamma=0,theta=0, ds03=0;
   double Ku[4][4], K0[4][4], Kd[4][4], dKu[4][4], dK0[4][4];
   double Su[4], S0[4], Sd[4], dSu[4], dS0[4];
   double A[4][4], Ma[4][4], Mb[4][4], Mc[4][4], V0[4];//, V1[4];
@@ -398,9 +439,10 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
   
   
   /* --- upwind path_length (BEzier3 integration) --- */
-
-  c2 = chi1[k]    - (dsup*0.3333333333333333333333333) * dchi_c;
-  c1 = chi1[k-dk] + (dsup*0.3333333333333333333333333) * dchi_up;
+  
+  ds03 = dsup / 3.0;
+  c2 = chi1[k]    - ds03 * dchi_c;
+  c1 = chi1[k-dk] + ds03 * dchi_up;
 
   
   dtau_uw = 0.25 * dsup * (chi1[k] + chi1[k-dk] + c1 + c2);
@@ -416,14 +458,18 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
 
   
   /* --- Assume side derivative in the first interval --- */
-  
+
+  /*
   for(n=0;n<4;n++){
     dSu[n] = (S0[n] - Su[n]) / dtau_uw;
     
     for(m=0;m<4;m++)
       dKu[n][m] = (K0[n][m] - Ku[n][m]) / dtau_uw;
   }
-
+  */
+  memset(dSu,0,sizeof(double)*4);
+  memset(dKu,0,sizeof(double)*16);
+  
   
   /* --- Solve transfer along ray --                   -------------- */
   
@@ -437,7 +483,7 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
       
       dsdn = fabs(z[k+dk] - z[k]) * imu;
       
-      if(fabs(k-k_end)>1){
+      if(abs(k-k_end)>1){
 	dsdn2=fabs(z[k+2*dk] - z[k+dk]) * imu;
 	dchi_dn = cent_deriv(dsdn,dsdn2,chi1[k],chi1[k+dk],chi1[k+2*dk]);       
       } else dchi_dn=(chi1[k+dk]-chi1[k])/dsdn;
@@ -445,8 +491,9 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
       
     /* --- Make sure that c1 and c2 don't do below zero --- */
 
-      c1 = (chi1[k+dk] - (dsdn*0.333333333333333333333333333) * dchi_dn);
-      c2 = (chi1[k]    + (dsdn*0.333333333333333333333333333) * dchi_c);
+      ds03 = dsdn / 3.0;
+      c1 = (chi1[k+dk] - ds03 * dchi_dn);
+      c2 = (chi1[k]    + ds03 * dchi_c);
       
       /* --- Bezier3 integrated dtau --- */
       
@@ -465,14 +512,19 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
       /* --- Last interval, assume linear dependence for the derivatives 
 	 at the central point. In that case all the info related to the 
 	 downwind point can be ditched --- */
-      
+      /*
       for(n=0;n<4;n++){
 	dS0[n] = (S0[n] - Su[n]) / dtau_uw;	
-	for(m=0;m<4;m++) dK0[n][m] = (K0[n][m] - Ku[n][m]) / dtau_uw;
+	for(m=0;m<4;m++)
+	  dK0[n][m] = (K0[n][m] - Ku[n][m]) / dtau_uw;
       }
+      */
+      memset(dS0,0,sizeof(double)*4);
+      memset(dK0,0,sizeof(double)*16);
+  
     }
     
-    dt = dtau_uw, dt03 = dt * 0.3333333333333333333333333333333;
+    dt = dtau_uw, dt03 = dtau_uw /3.0; //* 0.3333333333333333333333333333333;
 
     
     /* --- Bezier3 coeffs. ---- */
@@ -512,11 +564,12 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
        --- */
         
     for(i = 0; i<4; i++){
-      V0[i] = 0.0;
+      suma = 0.0;
       for(j = 0; j<4; j++){
-	V0[i] += Ma[i][j] * I[j][k-dk] + Mb[i][j] * Su[j] + Mc[i][j] * S0[j];
+	suma += Ma[i][j] * I[j][k-dk] + Mb[i][j] * Su[j] + Mc[i][j] * S0[j];
       }
-      V0[i] += dt03 * (gamma * dSu[i] - theta * dS0[i]);
+      suma += dt03 * (gamma * dSu[i] - theta * dS0[i]);
+      V0[i] = suma;
     }
       
       
@@ -525,7 +578,8 @@ void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
     solveLinearFast(Md,V0);
 
     
-    for(i=0;i<4;i++) I[i][k] = V0[i];
+    for(i=0;i<4;i++)
+      I[i][k] = V0[i];
 
     
     /* --- Shift values for next depth --- */
@@ -576,7 +630,7 @@ void Piecewise_Bezier3(int nspect, int mu, bool_t to_obs,
   double dtau_uw, dtau_dw, dS_uw, I_upw, c1, c2, w[3],
           Bnu[2];
   double dsup,dsdn,dt,dt03,eps=0,alpha=0,beta=0,gamma=0,theta=0;
-  double dS_up,dS_c,dchi_up,dchi_c,dchi_dn,dsdn2, tmp = 0.0;
+  double dS_up,dS_c,dchi_up,dchi_c,dchi_dn,dsdn2, tmp = 0.0, ds03=0;
   double *z, *chi1;
   
   if(FALSE){
@@ -659,8 +713,9 @@ void Piecewise_Bezier3(int nspect, int mu, bool_t to_obs,
   
   /* --- upwind path_length (Bezier3 integration) --- */
 
-  c1 = (chi1[k]    - (dsup*0.333333333333333333) * dchi_c);
-  c2 = (chi1[k-dk] + (dsup*0.333333333333333333) * dchi_up);
+  ds03 = dsup/3.0;
+  c1 = (chi1[k]    - ds03 * dchi_c);
+  c2 = (chi1[k-dk] + ds03 * dchi_up);
   
   dtau_uw =  dsup * (chi1[k] + chi1[k-dk] + c1 + c2) * 0.25;
 
@@ -681,7 +736,7 @@ void Piecewise_Bezier3(int nspect, int mu, bool_t to_obs,
       
       /* dchi/ds at downwind point */
       
-      if (fabs(k-k_end)>1) {
+      if (abs(k-k_end)>1) {
 	dsdn2=fabs(z[k+2*dk] - z[k+dk]) * zmu;
 	dchi_dn = cent_deriv(dsdn,dsdn2,chi1[k],chi1[k+dk],chi1[k+2*dk]);       
       } else {
@@ -690,9 +745,10 @@ void Piecewise_Bezier3(int nspect, int mu, bool_t to_obs,
 
 
       /* --- Do not clip control points, it fails if there is much estimulated emission --- */
-      
-      c1 = (chi1[k]    + (dsdn*0.3333333333333333333) * dchi_c);
-      c2 = (chi1[k+dk] - (dsdn*0.3333333333333333333) * dchi_dn);
+
+      ds03 = dsdn / 3.0;
+      c1 = (chi1[k]    + ds03 * dchi_c);
+      c2 = (chi1[k+dk] - ds03 * dchi_dn);
       
       /* downwind optical path length */
       
@@ -714,7 +770,7 @@ void Piecewise_Bezier3(int nspect, int mu, bool_t to_obs,
     
     /* --- compute interpolation parameters --- */
     
-    dt03 = dtau_uw*0.33333333333333333333333;
+    dt03 = dtau_uw/3.0;
     Bezier3_coeffs(dtau_uw, &alpha, &beta, &gamma, &theta, &eps);
     
     
