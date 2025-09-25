@@ -104,6 +104,32 @@ double cent_deriv2(double odx,double dx,
 
 /* ------- begin -------------------------- Piecewise_1D.c ---------- */
 
+void linear_coeffs(double const dt, double* const eps, double* const cu, double* const c0)
+{
+  // Linear interpolation coefficients //
+  // Coded by J. de la Cruz Rodriguez (ISP-SU, 2025) //
+  
+  double dt2 = 0.0, u0 = 0.0, dt05=0.0;
+
+  if(dt >= 40.0){
+    *eps = 0.0;
+    *cu = 1.0 / dt;
+    *c0 = 1.0 - *cu;
+  }else if(dt > 0.01){
+    *eps = exp(-dt);
+    u0 = (1.0 - *eps) / dt;
+    *c0 = 1.0 - u0;
+    *cu = u0 - *eps;
+  }else{
+    dt05 = 0.5*dt;
+    dt2 = dt*dt;
+    *eps = 1.0 - dt + 0.5*dt2;
+    *c0 = dt05 - dt2/6.0;
+    *cu = dt05 - dt2/3.0;
+  }
+}
+
+// ------------------------------------------------------------------ // 
 void Piecewise_1D(int nspect, int mu, bool_t to_obs,
 		  double *chi, double *S, double *I, double *Psi)
 {
@@ -172,57 +198,22 @@ void Piecewise_1D(int nspect, int mu, bool_t to_obs,
   I[k_start] = I_upw;
   if (Psi) Psi[k_start] = 0.0;
 
+  
   /* --- Solve transfer along ray --                   -------------- */
 
   for (k = k_start+dk;  k != k_end+dk;  k += dk) {
-    w3(dtau_uw, w);
-
-    if (k != k_end) {
-
-      /* --- Piecewise quadratic here --               -------------- */ 
-
-      dtau_dw = zmu * (chi1[k] + chi1[k+dk]) *
-	fabs(z[k] - z[k+dk]);
-      dS_dw   = (S[k] - S[k+dk]) / dtau_dw;
-
-
-      /* Tiago: commenting this out to always keep linear piecewise
-      c1 = (dS_uw*dtau_dw + dS_dw*dtau_uw);
-      c2 = (dS_uw - dS_dw);
-      I[k] = (1.0 - w[0])*I_upw + w[0]*S[k] +
-	(w[1]*c1 + w[2]*c2) / (dtau_uw + dtau_dw);
-      */
-
-      /* --- Try piecewise linear if quadratic gives negative
-             monochromatic intensity --                -------------- */ 
-      /*
-      if (I[k] < 0.0) { */
-      c1   = dS_uw;
-      I[k] = (1.0 - w[0])*I_upw + w[0]*S[k] + w[1]*c1;
-
-      if (Psi) Psi[k] = w[0] - w[1]/dtau_uw;
-      
-      /*
-      } else {
-	if (Psi) {
-	  c1 = dtau_uw - dtau_dw;
-	  Psi[k] = w[0] + (w[1]*c1 - w[2]) / (dtau_uw * dtau_dw);
-	}
-      }
-      */
-    } else {
-	
-      /* --- Piecewise linear integration at end of ray -- ---------- */
-
-      I[k] = (1.0 - w[0])*I_upw + w[0]*S[k] + w[1]*dS_uw;
-      if (Psi) Psi[k] = w[0] - w[1] / dtau_uw;
-    }
-    I_upw = I[k];
-
-    /* --- Re-use downwind quantities for next upwind position -- --- */
-
-    dS_uw   = dS_dw;
-    dtau_uw = dtau_dw;
+    
+    dtau_uw = zmu * (chi1[k] + chi1[k-dk]) *
+      fabs(z[k] - z[k-dk]);
+    
+    // ---  w[0] = exp{-dt}, w[1] = c_u, w[2] = c_c --- //
+    
+    linear_coeffs(dtau_uw, &w[0], &w[1], &w[2]);
+    
+    I[k] = I[k-dk]*w[0] + w[1] * S[k-dk] + w[2] * S[k];
+    
+    
+    if (Psi) Psi[k] = w[2];
   }
 
   if(chi1 != chi)
