@@ -172,7 +172,8 @@ void readInput()
      &input.RLK_explicit, setboolValue},
     {"XDR_ENDIAN", "TRUE", FALSE, KEYWORD_OPTIONAL,
      &input.xdr_endian, setboolValue},
-
+    {"SIMPLER_PRECONDITIONING", "TRUE", FALSE, KEYWORD_DEFAULT,
+     &input.simpler_preconditioning, setboolValue},
     {"S_INTERPOLATION", "BEZIER3", FALSE, KEYWORD_DEFAULT,
      &input.S_interpolation, set_S_Interpolation},
     {"S_INTERPOLATION_STOKES", "DELO_BEZIER3", FALSE, KEYWORD_DEFAULT,

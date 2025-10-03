@@ -151,6 +151,7 @@ inline void m4inv(double MI[4][4]){
   return;
 }
 /* --------------------------------------------------------------- */
+
 double signFortran(const double val)
 {
   return ((val >= 0.0)? 1.0 : -1.0);
@@ -197,7 +198,7 @@ double cent_deriv(double odx,double dx,
 void cent_deriv_mat(double wprime[4][4], double dsup, double dsdn,
 			   double chiup[4][4], double chic[4][4], double chidn[4][4])
 {
-  register int i,j;
+  //register int i,j;
 
   // --- We know that there are only 7 independent elements --- //
 
@@ -292,8 +293,8 @@ inline void Svec(int k, double **S, double *Sf)
 
 /* -------------------------------------------------------------------------- */
 
-inline void Bezier3_coeffs(double dt, double *alpha, double *beta,
-		    double *gamma, double *theta, double *eps)
+inline void Bezier3_coeffs(double dt, double* const alpha, double* const beta,
+		    double* const gamma, double* const theta, double* const eps)
 {
   /* ---
 
@@ -307,32 +308,34 @@ inline void Bezier3_coeffs(double dt, double *alpha, double *beta,
      
      --- */
   
-  double dt2 = dt*dt, dt3 = dt2 * dt; //,  dt4;
-  if(dt < 0.05){
-    *eps =   1.0 - dt + 0.50 * dt2;// - dt3 *  0.166666666666666666666666667;
-    *alpha = 0.25 * dt - 0.20 * dt2;// + dt3 * 0.083333333333333333333333333;// - dt4 / 840.0;
-    *beta  = 0.25 * dt - 0.05 * dt2;// + dt3 * 0.008333333333333333333333333;//  - dt4 / 42.0;
-    *gamma = 0.25 * dt - 0.15 * dt2;// + dt3 * 0.050;// - dt4 / 210.0;
-    *theta = 0.25 * dt - 0.10 * dt2;// + dt3 * 0.025;// - dt4 / 84.0;
+  double dt2 = dt*dt, dt3 = dt2 * dt; 
+
+  if(dt > 10){
+    *eps = 0.0;
+    *alpha = 6.0 / dt3;
+    *beta = 1.0 - (*alpha)*(1.0-dt) - 3.0/dt;
+    *gamma = *alpha*(dt-3.0);
+    *theta = 3.0*(*alpha + (dt-4.0)/dt2);
+    return;
+  }else if(dt > 0.05){
+    *eps = exp(-dt);
+    *alpha = -(-6.0+(6.0+6.0*dt+3.0*dt2+dt3)*(*eps))/dt3;
+    *beta  = (-6.0 + dt*(6.0+dt*(dt-3.0)) +6.0*(*eps)) / dt3;
+    *gamma = 3.0 * (2.0*dt-6.0 + *eps*(6.0+dt*(dt+4.0))) / dt3;
+    *theta = 3.0 * (-2.0*(*eps)*(dt+3.0) +6.0+(dt-4.0)*dt) / dt3;
     return;
   }else{
-    if((dt > 30.)){
-      *eps = 0.0;
-      *alpha = 6.0 / dt3;
-      *beta = 1.0 - (*alpha)*(1.0-dt) - 3.0/dt;
-      *gamma = *alpha*(dt-3.0);
-      *theta = 3.0*(*alpha + (dt-4.0)/dt2);
-      return;
-    }else{
-      *eps = exp(-dt);
-      *alpha = -(-6.0+(6.0+6.0*dt+3.0*dt2+dt3)*(*eps))/dt3;
-      *beta  = (-6.0 + dt*(6.0+dt*(dt-3.0)) +6.0*(*eps)) / dt3;
-      *gamma = 3.0 * (2.0*dt-6.0 + *eps*(6.0+dt*(dt+4.0))) / dt3;
-      *theta = 3.0 * (-2.0*(*eps)*(dt+3.0) +6.0+(dt-4.0)*dt) / dt3;
-      return;
-    }
+    *eps =   1.0 - dt + 0.50 * dt2 - dt3 *  0.166666666666666666666666667;
+    *alpha = 0.25 * dt - 0.20 * dt2 + dt3 * 0.083333333333333333333333333;// - dt4 / 840.0;
+    *beta  = 0.25 * dt - 0.05 * dt2 + dt3 * 0.008333333333333333333333333;//  - dt4 / 42.0;
+    *gamma = 0.25 * dt - 0.15 * dt2 + dt3 * 0.050;// - dt4 / 210.0;
+    *theta = 0.25 * dt - 0.10 * dt2 + dt3 * 0.025;// - dt4 / 84.0;
+    return;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+
 void PiecewiseStokesBezier3(int nspect, int mu, bool_t to_obs,
 			    double *chi, double **S, double **I, double *Psi)
 {

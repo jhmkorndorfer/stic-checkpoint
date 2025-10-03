@@ -77,6 +77,134 @@ void initGammaMolecule(Molecule *molecule)
 }
 /* ------- end ---------------------------- initGammaMolecule.c ----- */
 
+void addtoGammaSimple(int nspect, double wmu, double *I, double *Psi)
+{
+  const char routineName[] = "addtoGamma";
+  register int nact, n, k, m;
+
+  int    i, j, ij, ji, jp, nt;
+  double twohnu3_c2, twohc, wlamu, *Ieff,
+    *Stokes_Q, *Stokes_U, *Stokes_V, *eta_Q, *eta_U, *eta_V,
+    chi_ij;
+
+  Atom *atom;
+  AtomicLine *line;
+  AtomicContinuum *continuum;
+  Molecule *molecule;
+  MolecularLine *mrt;
+  ActiveSet *as;
+  
+  twohc = 2.0*HPLANCK*CLIGHT / CUBE(NM_TO_M);
+
+  as = &spectrum.as[nspect];
+  nt = nspect % input.Nthreads;
+
+  if (containsActive(as)) {
+    Ieff = (double *) malloc(atmos.Nspace * sizeof(double));
+
+    if (input.StokesMode == FULL_STOKES  &&  containsPolarized(as)) {
+
+      /* --- Use pointers to the bottom 3/4 of I and
+             atom->rhth.eta --                         -------------- */
+
+      Stokes_Q = I + atmos.Nspace;
+      Stokes_U = I + 2*atmos.Nspace;
+      Stokes_V = I + 3*atmos.Nspace;
+    }
+  }
+  /* --- Contributions from the active transitions in atoms -- ------ */
+
+  for (nact = 0;  nact < atmos.Nactiveatom;  nact++) {
+    atom = atmos.activeatoms[nact];
+
+    for (n = 0;  n < as->Nactiveatomrt[nact];  n++) {
+      switch (as->art[nact][n].type) {
+      case ATOMIC_LINE:
+	line = as->art[nact][n].ptype.line;
+	i = line->i;
+	j = line->j;
+	twohnu3_c2 = line->Aji / line->Bji;
+	break;
+
+      case ATOMIC_CONTINUUM:
+	continuum = as->art[nact][n].ptype.continuum;
+	i = continuum->i;
+	j = continuum->j;
+	twohnu3_c2 = twohc / CUBE(spectrum.lambda[nspect]);
+	break;
+
+      default:
+	sprintf(messageStr, "Invalid transition type");
+	Error(ERROR_LEVEL_1, routineName, messageStr);
+	twohnu3_c2 = 0.0;
+      }
+
+      // --- For now, only unpolarized --- //
+      
+      for (k = 0;  k < atmos.Nspace;  k++) {
+	Ieff[k] = I[k] - Psi[k] * atom->rhth[nt].Vij[n][k] *twohnu3_c2 * atom->rhth[nt].gij[n][k]*atom->n[j][k];
+      }
+      
+      //if (input.Nthreads > 1) pthread_mutex_lock(&atom->Gamma_lock);
+      
+      ij = i*atom->Nlevel + j;
+      ji = j*atom->Nlevel + i;
+
+      for (k = 0;  k < atmos.Nspace;  k++) {
+	wlamu = atom->rhth[nt].Vij[n][k] * atom->rhth[nt].wla[n][k] * wmu;
+
+	chi_ij = atom->rhth[nt].Vij[n][k] * (atom->n[i][k] - atom->rhth[nt].gij[n][k] * atom->n[j][k]);
+	
+	atom->Gamma[ji][k] += Ieff[k] * wlamu;
+	atom->Gamma[ij][k] += (twohnu3_c2 * (1.0 - chi_ij*Psi[k]) + Ieff[k]) *
+	  atom->rhth[nt].gij[n][k] * wlamu;
+      }
+    }
+  }
+  
+  /* --- Add the active molecular contributions --     -------------- */
+
+  for (nact = 0;  nact < atmos.Nactivemol;  nact++) {
+    molecule = atmos.activemols[nact];
+
+    for (n = 0;  n < as->Nactivemolrt[nact];  n++) {
+      switch (as->mrt[nact][n].type) {
+
+      case VIBRATION_ROTATION:
+	mrt = as->mrt[nact][n].ptype.vrline;
+	i = mrt->vi;
+	j = mrt->vj;
+	twohnu3_c2 = mrt->Aji / mrt->Bji;
+	break;
+
+      default:
+	sprintf(messageStr, "Invalid transition type");
+	Error(ERROR_LEVEL_1, routineName, messageStr);
+	twohnu3_c2 = 0.0;
+      }
+
+      // if (input.Nthreads > 1) pthread_mutex_lock(&molecule->Gamma_lock);
+
+      /* --- In case of molecular vibration-rotation transitions -- - */
+
+      ij = i*molecule->Nv + j;
+      ji = j*molecule->Nv + i;
+
+      for (k = 0;  k < atmos.Nspace;  k++) {
+	if (molecule->n[k]) {
+	  wlamu = molecule->rhth[nt].Vij[n][k] *
+	    molecule->rhth[nt].wla[n][k] * wmu;
+	  molecule->Gamma[ji][k] += I[k] * wlamu;
+	  molecule->Gamma[ij][k] += molecule->rhth[nt].gij[n][k] *
+	    (twohnu3_c2 + I[k]) * wlamu;
+	}
+      }
+      // if (input.Nthreads > 1) pthread_mutex_unlock(&molecule->Gamma_lock);
+    }
+  }
+
+  if (containsActive(as)) free(Ieff);
+}
 /* ------- begin -------------------------- addtoGamma.c ------------ */
 
 void addtoGamma(int nspect, double wmu, double *I, double *Psi)

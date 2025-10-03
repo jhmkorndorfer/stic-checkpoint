@@ -171,7 +171,10 @@ double Formal(int nspect, bool_t eval_operator, bool_t redistribute, int iter)
 	if (initialize || boundbound)
 	  Opacity(nspect, mu, to_obs, initialize);
 
-	if (eval_operator) addtoCoupling(nspect);
+	if (eval_operator)
+	  if(!input.simpler_preconditioning)
+	    addtoCoupling(nspect);
+	
 	for (k = 0;  k < Nspace;  k++) {
 	  chi[k] = as->chi[k] + as->chi_c[k];
 	  S[k]   = as->eta[k] + as->eta_c[k] + as->sca_c[k]*Jdag[k];
@@ -230,7 +233,11 @@ double Formal(int nspect, bool_t eval_operator, bool_t redistribute, int iter)
 	  if(iter <= input.NlambdaIter)
 	    for (k = 0;  k < Nspace;  k++) Psi[k] = 0.0;
 	  else for (k = 0;  k < Nspace;  k++) Psi[k] /= chi[k];
-	  addtoGamma(nspect, wmu, I, Psi);
+	  if(input.simpler_preconditioning)
+	    addtoGammaSimple(nspect, wmu, I, Psi);
+	  else
+	    addtoGamma(nspect, wmu, I, Psi);
+	  
 	}
 
         if (spectrum.updateJ) {
@@ -346,7 +353,9 @@ double Formal(int nspect, bool_t eval_operator, bool_t redistribute, int iter)
     
     readBackground_j(nspect, 0, 0);
     Opacity(nspect, 0, 0, initialize=TRUE);
-    if (eval_operator) addtoCoupling(nspect);
+    if (eval_operator)
+      if(!input.simpler_preconditioning)
+	addtoCoupling(nspect);
 
     for (k = 0;  k < Nspace;  k++) {
       chi[k] = as->chi[k] + as->chi_c[k];
@@ -361,7 +370,11 @@ double Formal(int nspect, bool_t eval_operator, bool_t redistribute, int iter)
 	if(iter < input.NlambdaIter)
 	  for (k = 0;  k < Nspace;  k++) Psi[k] = 0.0;
 	else for (k = 0;  k < Nspace;  k++) Psi[k] /= chi[k];
-	addtoGamma(nspect, geometry.wmu[mu], I, Psi);
+	if(input.simpler_preconditioning)
+	  addtoGammaSimple(nspect, geometry.wmu[mu], I, Psi);
+	else
+	  addtoGamma(nspect, geometry.wmu[mu], I, Psi);
+	  
       }
 
       if (spectrum.updateJ) {
