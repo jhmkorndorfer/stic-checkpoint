@@ -139,6 +139,10 @@ iput_t read_input(std::string filename, bool verbose){
 	input.imodel = field;
 	set = true;
       }
+      else if(key == "restart_from_pixel"){
+    input.restart_from_pixel = atol(field.c_str());
+    set = true;
+  }
       else if(key == "input_profiles"){
 	input.iprof = field;
 	set = true;	
@@ -459,10 +463,6 @@ iput_t read_input(std::string filename, bool verbose){
 	  input.nodes.vturb.resize(param.size());
 	  for(int ii = 0; ii<(int)param.size(); ii++) input.nodes.vturb[ii] = std::stod(param[ii]);
 	}
-  else if(key == "restart_from_pixel"){
-    input.restart_from_pixel = atol(field.c_str());
-    set = true;
-  }
 	set = true;
       }
       else if(key == "") set = false;

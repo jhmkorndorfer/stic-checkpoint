@@ -53,11 +53,28 @@ void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> 
 
   /* --- Init dimensions --- */
   unsigned long ntot = (unsigned long)(x.size(0) * x.size(1));
-  int ncom = (int)(std::floor(ntot / (double)iput.npack));
-  if((unsigned long)(ncom * iput.npack) != ntot) ncom++;
+
+  /* --- Looking for checkpoints --- */
+  if ( (unsigned long)iput.restart_from_pixel >= ntot) {
+    if (iput.verbose) {
+      fprintf(stdout,
+              "slaveInversion: restart_from_pixel=%ld >= ntot=%lu, nothing to do.\n",
+              iput.restart_from_pixel, ntot);
+    }
+    return;
+  }
+
+  // Number of pixels we still need to process
+  unsigned long remaining = ntot - (unsigned long)iput.restart_from_pixel;
+
+  int ncom = (int)(std::floor(remaining / (double)iput.npack));
+  if ((unsigned long)(ncom * iput.npack) != remaining) ncom++;
+
   int nprocs = iput.nprocs;
   int iproc = 0;
-  unsigned long ipix = 0;
+
+  // Start sending work from the first not-yet-done pixel
+  unsigned long ipix = (unsigned long)iput.restart_from_pixel;
   int tocom = ncom;
 
   int compute_gradient = 0; // dummy parameter here
@@ -71,12 +88,19 @@ void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> 
     for(int ss = 1; ss<=min(nprocs-1,ncom); ss++)
       comm_master_pack_data(iput, obs, x, ipix, ss, m, compute_gradient);
 
-    int per  = 0;
+        int per  = 0;
     int oper  = -1;
-    float pno =  100.0 / double(mth::max<int>(1, ntot - 1));
-    unsigned long irec = 0;
-    fprintf(stdout,"\nProcessed -> %d%s -> sent=%d, received=%d     \n", per, "%", ipix, irec);
-    // fflush(stdout);
+
+    // scale progress over remaining pixels only
+    float pno = 100.0 / double(mth::max<int>(1, (int)remaining - 1));
+
+    // irec starts at the number of pixels already done
+    unsigned long irec = (unsigned long)iput.restart_from_pixel;
+
+    fprintf(stdout,
+            "\nProcessed -> %d%s -> sent=%lu, received=%lu (restart_from_pixel=%ld, remaining=%lu)\n",
+            per, "%", ipix, irec, iput.restart_from_pixel, remaining);
+
 
 
     /* --- manage packages as long as needed --- */
@@ -97,7 +121,7 @@ void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> 
       // fflush(stdout);
 
 
-      per = irec * pno;
+      per = (int)((irec - (unsigned long)iput.restart_from_pixel) * pno);
 
       // Send more data to that same slave (iproc)
       if(ipix < ntot) comm_master_pack_data(iput, obs, x, ipix, iproc, m, compute_gradient);
@@ -301,13 +325,45 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
      stored as floats or doubles, regardless of their 
      type in memory
      --- */
-  io opfile(input.oprof,  NcFile::replace);
-  opfile.initDim({"time","ndep","vtype", "y", "x", "wav", "stokes"},{0, input.ndep, input.nresp, input.ny, input.nx, input.nw_tot, input.ns});
-  opfile.initVar<double>(string("profiles"), {"time","y", "x", "wav", "stokes"});
-  opfile.initVar<double>(string("wav"), {"wav"});
+  bool have_checkpoint = false;
+  // Cheking if a checkpoint restart is requested and if the partial output file exists.
+  if (input.restart_from_pixel > 0) {
+     have_checkpoint = true;
+    if (!bfile_exists(input.oprof)) {
+      have_checkpoint = false;
+      std::cerr << "master_sparse: WARNING, restart_from_pixel > 0 but output file ["
+                << input.oprof << "] does not exist, starting from scratch\n";
+      input.restart_from_pixel = 0;
+    }
+  }
+  else {
+     have_checkpoint = false;
+  }
 
-  opfile.write_Tstep<double>(string("wav"), wav);
-  if(input.mode == 4){
+
+  // io opfile(input.oprof,  NcFile::replace);
+  io opfile;
+  if (have_checkpoint) {
+    // Resume: open existing file for writing, DO NOT recreate dims/vars
+    if (input.verbose) {
+      std::cerr << "master_sparse: resuming from checkpoint, using existing output file ["
+                << input.oprof << "], restart_from_pixel=" << input.restart_from_pixel << "\n";
+    }
+    opfile.initRead(input.oprof, NcFile::write, input.verbose);
+  }
+  else {
+    opfile.initRead(input.oprof, NcFile::replace, input.verbose);
+    opfile.initDim({"time","ndep","vtype", "y", "x", "wav", "stokes"},{0, input.ndep, input.nresp, input.ny, input.nx, input.nw_tot, input.ns});
+    opfile.initVar<double>(string("profiles"), {"time","y", "x", "wav", "stokes"});
+    opfile.initVar<double>(string("wav"), {"wav"});
+
+    opfile.write_Tstep<double>(string("wav"), wav);
+  }
+
+  
+
+
+if(input.mode == 4){
 
     string vn;
     vector<string> vnv;
@@ -316,25 +372,30 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
     
     for(int ii=0;ii<8;ii++)
       if(input.getResponse[ii]){
-	vn += vnames[ii]+string(" ");
-	vnv.push_back(vnames[ii]);
-	idx(k++) = ii;
+        vn += vnames[ii]+string(" ");
+        vnv.push_back(vnames[ii]);
+        idx(k++) = ii;
       }
     
-    cerr<<"master: computing derivatives for ["<<vn<<"]"<<endl;
-    opfile.initVar<int>(string("vidx"), {"vtype"});
-    opfile.write_Tstep<int>(string("vidx"), idx);
+    if (!have_checkpoint) {
+      cerr<<"master: computing derivatives for ["<<vn<<"]"<<endl;
+      opfile.initVar<int>(string("vidx"), {"vtype"});
+      opfile.write_Tstep<int>(string("vidx"), idx);
 
+      opfile.initVar<double>(string("derivatives"),
+                             {"time","y", "x", "vtype", "ndep", "wav", "stokes"});
+      opfile.varAttr("derivatives","units", vn);
+    }
 
-    opfile.initVar<double>(string("derivatives") ,{"time","y", "x", "vtype", "ndep", "wav", "stokes"});
-    opfile.varAttr("derivatives","units", vn);
+    // we still need the in-memory buffer, regardless of checkpoint
     dobs.set({input.ny, input.nx, input.nresp, input.ndep, input.nw_tot, input.ns});
   }
   
-					     
   if(inversion){
-    opfile.initVar<float>(string("weights"), {"wav", "stokes"});
-    opfile.write_Tstep<double>(string("weights"), w);
+    if (!have_checkpoint) {
+      opfile.initVar<float>(string("weights"), {"wav", "stokes"});
+      opfile.write_Tstep<double>(string("weights"), w);
+    }
 
     // omfile.initRead(input.omodel, NcFile::replace);
 
@@ -351,20 +412,16 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
     }
     
     /* --- Place Nodes --- */
-    //input.npar = set_nodes(input.nodes,  mmin, mmax, input.verbose);
-    
     {
       vector<double> idep(input.ndep, 0.0);
 
       if(input.nodes.depth_t == 0)
-	memcpy(&idep[0], &im.cub(0,0,9,0), input.ndep*sizeof(double));
+        memcpy(&idep[0], &im.cub(0,0,9,0), input.ndep*sizeof(double));
       else
-	memcpy(&idep[0], &im.cub(0,0,11,0), input.ndep*sizeof(double));
+        memcpy(&idep[0], &im.cub(0,0,11,0), input.ndep*sizeof(double));
       
       input.npar = set_nodes(input.nodes, idep, input.dint, input.verbose);
-
     }
-    
   } // if inversion
 
   read_instruments(input);
@@ -429,11 +486,41 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
 	exit(0);
 	
       }
-
       /* --- get free-parameters from input model --- */
-      
-      
     } // inversion mode
+
+    // --- If resuming from checkpoint, pre-fill obs with existing synthetic output
+    if (inversion && have_checkpoint && input.restart_from_pixel > 0) {
+
+      mat<double> prev_profiles;
+      // Read synthetic profiles from the existing output file for this time step
+      opfile.read_Tstep<double>("profiles", prev_profiles, tt, input.verbose);
+
+      unsigned long ntot = (unsigned long)input.ny * (unsigned long)input.nx;
+      unsigned long restart_pix = (unsigned long)input.restart_from_pixel;
+      if (restart_pix > ntot) restart_pix = ntot;
+
+      // Copy already-computed pixels from prev_profiles into obs
+      // (so write_Tstep will not overwrite them with zeros)
+      for (unsigned long ipix = 0; ipix < restart_pix; ++ipix) {
+        int y = ipix / input.nx;
+        int x = ipix % input.nx;
+        for (int iw = 0; iw < input.nw_tot; ++iw) {
+          for (int is = 0; is < input.ns; ++is) {
+            obs(y, x, iw, is) = prev_profiles(y, x, iw, is);
+          }
+        }
+      }
+
+      if (input.verbose) {
+        fprintf(stdout,
+                "master_sparse: checkpoint resume -> pre-filled %lu pixels from existing profiles\n",
+                restart_pix);
+      }
+    }
+
+
+  
 
     im.model_parameters2(model, input.nodes);
 
