@@ -105,6 +105,8 @@ struct iput{
   std::vector<region_t> regions;
   std::vector<line_t> lines;
   nodes_t nodes;
+
+  long restart_from_pixel; 
   
 
   iput(){};

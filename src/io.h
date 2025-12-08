@@ -32,6 +32,7 @@ class io{
     initRead(filename, mode, verbose);
   }
  io():ifile(NULL){};
+ void sync();
  
   // Destructor
   ~io(){

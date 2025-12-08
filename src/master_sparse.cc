@@ -49,7 +49,7 @@ void read_instruments(iput_t &iput)
 
 
 //
-void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> &x, mat<double> &chi2, mat<double> &dsyn){
+void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> &x, mat<double> &chi2, mat<double> &dsyn, io &opfile, int tt){
 
   /* --- Init dimensions --- */
   unsigned long ntot = (unsigned long)(x.size(0) * x.size(1));
@@ -75,23 +75,36 @@ void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> 
     int oper  = -1;
     float pno =  100.0 / double(mth::max<int>(1, ntot - 1));
     unsigned long irec = 0;
-    fprintf(stdout,"\rProcessed -> %d%s -> sent=%d, received=%d     ", per, "%", ipix, irec);
-    fflush(stdout);
+    fprintf(stdout,"\nProcessed -> %d%s -> sent=%d, received=%d     \n", per, "%", ipix, irec);
+    // fflush(stdout);
 
 
     /* --- manage packages as long as needed --- */
     while(irec < ntot){
 
       // Receive processed data from any slave (iproc)
+      fprintf(stdout, "\nAAAAProcessed -> %d -> sent=%lu, received=%lu, ntot=%lu, tocom=%d\n", per, ipix, irec, ntot, tocom);
       comm_master_unpack_data(iproc, iput, obs, x, chi2, irec, dsyn, compute_gradient, m);
+      // fprintf(stdout, "AAAAProcessed -> %d -> sent=%lu, received=%lu, ntot=%lu, tocom=%d\n", per, ipix, irec, ntot, tocom);
+      // fflush(stdout);
+
+      opfile.write_Tstep("profiles", obs, tt);
+      if (iput.mode == 4) opfile.write_Tstep("derivatives", dsyn, tt);
+      
+      opfile.sync();
+      fprintf(stdout, "\nCHECKPOINT DONE !!!!!!!!!!!!!!!!! CHECKPOINT DONE !!!!!!!!!!!!!!!!!\n");
+      fprintf(stdout, "\n[chk] wrote: tt=%d  obs(0,0,0,0)=%.6e  obs(%d,%d,0,0)=%.6e\n", tt, obs(0,0,0,0), (int)(iput.ny-1), (int)(iput.nx-1), obs(iput.ny-1, iput.nx-1, 0, 0));
+      // fflush(stdout);
+
 
       per = irec * pno;
 
       // Send more data to that same slave (iproc)
       if(ipix < ntot) comm_master_pack_data(iput, obs, x, ipix, iproc, m, compute_gradient);
-    
+      
       // Keep count of communications left
       tocom--;
+      
     
       // Printout
       if(per > oper){
@@ -192,6 +205,9 @@ void master_inverter(mdepthall_t &model, mat<double> &pars, mat<double> &obs, ma
 
 
 void do_master_sparse(int myrank, int nprocs,  char hostname[]){
+
+  setvbuf(stdout, NULL, _IONBF, 0);
+  setvbuf(stderr, NULL, _IONBF, 0);
 
   /* --- Printout number of processes --- */
   cerr << "STIC: Initialized with "<<nprocs <<" process(es)"<<endl;
@@ -430,12 +446,12 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
       if(nprocs == 1)
 	master_inverter(im, model, obs, w, input);
       else
-	slaveInversion(input, im, obs, model, chi2, dobs); // implemented above!
-      
-    }else if(input.mode == 2) slaveInversion(input, im, obs, model, chi2, dobs); // it won't invert if mode == 2
+	slaveInversion(input, im, obs, model, chi2, dobs, opfile, tt); // implemented above!
+
+    }else if(input.mode == 2) slaveInversion(input, im, obs, model, chi2, dobs, opfile, tt); // it won't invert if mode == 2
     //else if(input.mode == 3) inv.SparseOptimization(obs, model, w, im, pweight);
-    else if(input.mode == 4) slaveInversion(input, im, obs, model, chi2, dobs);
-    
+    else if(input.mode == 4) slaveInversion(input, im, obs, model, chi2, dobs, opfile, tt);
+
     if(inversion){
 
       /* --- Expand fitted parameters into depth-stratified atmos --- */
