@@ -74,8 +74,12 @@ iput_t read_input(std::string filename, bool verbose){
   //memset(&input, 0, sizeof(iput_t));
   
   // Set default checkpoint value, that is, start from the beginning
-  input.restart_from_pixel = 0;
-
+  input.is_restarting = 0;
+  // Checkpointing is off by default
+  input.is_checkpointing = 0; 
+  // Restart pixel calculated based on existing output file
+  input.restart_pixel    = 0;
+  
   // Default values
   input.mu = 1.0; // default
   input.npack = 1; // default
@@ -139,10 +143,14 @@ iput_t read_input(std::string filename, bool verbose){
 	input.imodel = field;
 	set = true;
       }
-      else if(key == "restart_from_pixel"){
-    input.restart_from_pixel = atol(field.c_str());
-    set = true;
+    else if(key == "is_restarting"){
+  input.is_restarting = atoi(field.c_str());
+  set = true;
   }
+    else if(key == "is_checkpointing"){
+  input.is_checkpointing = atoi(field.c_str());
+  set = true;
+    }
       else if(key == "input_profiles"){
 	input.iprof = field;
 	set = true;	

@@ -106,7 +106,10 @@ struct iput{
   std::vector<line_t> lines;
   nodes_t nodes;
 
-  long restart_from_pixel; 
+  int is_checkpointing;
+  int is_restarting;
+  long restart_pixel; 
+
   
 
   iput(){};

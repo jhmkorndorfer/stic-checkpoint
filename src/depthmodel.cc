@@ -1385,10 +1385,23 @@ void mdepthall::write_model(string &filename, int tstep){
 void mdepthall::write_model2(iput_t const& input, string &filename, int tstep){
 
   static bool firsttime = true;
+  static io *ofile = nullptr;
+  static bool need_init = false;
 
-  /* --- init output file ont he first call --- */
-  
-  static io ofile(filename, netCDF::NcFile::replace);
+  if (ofile == nullptr) {
+    // If restarting and file exists -> open in write mode (do not delete)
+    // Otherwise -> create fresh file (replace)
+    netCDF::NcFile::FileMode mode = netCDF::NcFile::replace;
+
+    if (input.is_restarting != 0 && bfile_exists(filename)) {
+      mode = netCDF::NcFile::write;
+    } else {
+      mode = netCDF::NcFile::replace;
+      need_init = true;  // new file -> must create dims/vars
+    }
+
+    ofile = new io(filename, mode);
+  }
 
   
   /* --- Dims --- */
@@ -1400,30 +1413,32 @@ void mdepthall::write_model2(iput_t const& input, string &filename, int tstep){
   /* --- Init vars & dims if firsttime --- */
   if(firsttime){
 
-    ofile.initDim({"time","y", "x", "ndep"}, dims);
+    ofile->initDim({"time","y", "x", "ndep"}, dims);
 
     
     /* --- vars -- */
-    
-    ofile.initVar<float>(string("vlos"),    {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("temp"),    {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("vturb"),   {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("blong"),       {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("bhor"),     {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("azi"),     {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("ltau500"), {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("z"),       {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("pgas"),    {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("rho"),     {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("nne"),     {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("cmass"),     {"time","y", "x", "ndep"});
-    ofile.initVar<float>(string("transition_region_loc"),     {"time","y", "x"});
-    ofile.initVar<float>(string("transition_region_scale"),     {"time","y", "x"});
-    ofile.initVar<int>(string("transition_region_nGrid"),     {"time","y", "x"});
 
-    firsttime = false;
+    ofile->initVar<float>(string("vlos"),    {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("temp"),    {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("vturb"),   {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("blong"),       {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("bhor"),     {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("azi"),     {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("ltau500"), {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("z"),       {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("pgas"),    {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("rho"),     {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("nne"),     {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("cmass"),     {"time","y", "x", "ndep"});
+    ofile->initVar<float>(string("transition_region_loc"),     {"time","y", "x"});
+    ofile->initVar<float>(string("transition_region_scale"),     {"time","y", "x"});
+    ofile->initVar<int>(string("transition_region_nGrid"),     {"time","y", "x"});
+
+    
     
   }
+
+  firsttime = false;
   
   {
   mat<double> tmp((vector<int>){dims[1], dims[2], dims[3]});
@@ -1432,75 +1447,77 @@ void mdepthall::write_model2(iput_t const& input, string &filename, int tstep){
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,0,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("temp"),    tmp,  tstep);
+  ofile->write_Tstep<double>(string("temp"),    tmp,  tstep);
 
   
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,1,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("vlos"),   tmp,  tstep);
+  ofile->write_Tstep<double>(string("vlos"),   tmp,  tstep);
 
   
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,2,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("vturb"),   tmp, tstep);
+  ofile->write_Tstep<double>(string("vturb"),   tmp, tstep);
 
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,3,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("blong"),       tmp,     tstep);
+  ofile->write_Tstep<double>(string("blong"),       tmp,     tstep);
 
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,4,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("bhor"),     tmp,   tstep);
+  ofile->write_Tstep<double>(string("bhor"),     tmp,   tstep);
 
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,5,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("azi"),     tmp,   tstep);
+  ofile->write_Tstep<double>(string("azi"),     tmp,   tstep);
 
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,9,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("ltau500"), tmp,  tstep);
+  ofile->write_Tstep<double>(string("ltau500"), tmp,  tstep);
 
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,10,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("z"), tmp,  tstep);
+  ofile->write_Tstep<double>(string("z"), tmp,  tstep);
 
   
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,6,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("pgas"),    tmp,  tstep);
+  ofile->write_Tstep<double>(string("pgas"),    tmp,  tstep);
   
   
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,7,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("rho"),    tmp,  tstep);
+  ofile->write_Tstep<double>(string("rho"),    tmp,  tstep);
   
   
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,8,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("nne"),    tmp,  tstep);
+  ofile->write_Tstep<double>(string("nne"),    tmp,  tstep);
 
   
   for(int yy=0; yy<dims[1]; yy++)
     for(int xx = 0;xx<dims[2];xx++)
       memcpy(&tmp(yy,xx,0), &cub(yy,xx,11,0), dims[3]*sizeof(double));
-  ofile.write_Tstep<double>(string("cmass"),    tmp,  tstep);
+  ofile->write_Tstep<double>(string("cmass"),    tmp,  tstep);
   }
 
   {
-    ofile.write_Tstep<double>(string("transition_region_loc"),   tr_loc,  tstep);
-    ofile.write_Tstep<double>(string("transition_region_scale"),   tr_amp,  tstep);
-    ofile.write_Tstep<int>(string("transition_region_nGrid"),   tr_N,  tstep);
+    ofile->write_Tstep<double>(string("transition_region_loc"),   tr_loc,  tstep);
+    ofile->write_Tstep<double>(string("transition_region_scale"),   tr_amp,  tstep);
+    ofile->write_Tstep<int>(string("transition_region_nGrid"),   tr_N,  tstep);
   }
+
+   ofile->sync();
 
   
 }
