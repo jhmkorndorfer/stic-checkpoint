@@ -152,12 +152,6 @@ void slaveInversion(iput_t &iput, mdepthall_t &m, mat<double> &obs, mat<double> 
 	fflush(stdout);
       }
 
-              // ---- TEST: stop execution after 10 completed pixels ----
-        if (irec >= 10) {
-          printf("[TEST] Stopping execution at pixel %lu (after checkpoint)\n", irec);
-          fflush(stdout);
-          MPI_Abort(MPI_COMM_WORLD, 0);
-        }
     }
   
     fprintf(stdout, "\n");
