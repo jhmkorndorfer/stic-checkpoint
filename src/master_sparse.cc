@@ -340,7 +340,7 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
       if (bfile_exists(input.oprof) && bfile_exists(input.oatmos)) {
         have_checkpoint = true;
       } else {
-        std::cerr << "master_sparse: WARNING, is_restarting!=0 but checkpoint files missing:\n"
+        std::cerr << "master_sparse: WARNING, is_restarting != 0 but checkpoint files missing:\n"
               << "  profiles=" << input.oprof << "\n"
               << "  atmos   =" << input.oatmos << "\n"
               << "  -> starting from scratch\n";
@@ -363,8 +363,9 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
   if (have_checkpoint) {
     // Resume: open existing file for writing, DO NOT recreate dims/vars
     if (input.verbose) {
-      std::cerr << "master_sparse: resuming from checkpoint, using existing output file ["
-                << input.oprof << "], is_restarting=" << input.is_restarting << "\n";
+      std::cerr << "master_sparse: checkpoint restart enabled, using existing outputs:\n"
+          << "  profiles=" << input.oprof << "\n"
+          << "  atmos   =" << input.oatmos << "\n";
     }
     opfile.initRead(input.oprof, NcFile::write, input.verbose);
   }
@@ -373,7 +374,6 @@ void do_master_sparse(int myrank, int nprocs,  char hostname[]){
     opfile.initDim({"time","ndep","vtype", "y", "x", "wav", "stokes"},{0, input.ndep, input.nresp, input.ny, input.nx, input.nw_tot, input.ns});
     opfile.initVar<double>(string("profiles"), {"time","y", "x", "wav", "stokes"});
     opfile.initVar<double>(string("wav"), {"wav"});
-
     opfile.write_Tstep<double>(string("wav"), wav);
   }
 
@@ -538,9 +538,7 @@ if(input.mode == 4){
 
       input.restart_pixel = restart_pix;
 
-      fprintf(stdout,
-              "master_sparse: restart enabled -> restart_pixel=%ld (tt=%d)\n",
-              input.restart_pixel, tt);
+      std::cerr << "master_sparse: restart enabled -> restart_pixel=" << input.restart_pixel << " (tt=" << tt << ")\n";
 
       // load atmosphere checkpoint into im
       im.read_model2(input, input.oatmos, tt, true);
