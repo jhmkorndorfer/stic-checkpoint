@@ -509,42 +509,49 @@ if(input.mode == 4){
     // --- If resuming from checkpoint, pre-fill obs with existing synthetic output
     if (inversion && have_checkpoint && input.is_restarting != 0) {
 
-      mat<double> prev_profiles;
-      opfile.read_Tstep<double>("profiles", prev_profiles, tt, input.verbose);
+  mat<double> prev_profiles;
+  opfile.read_Tstep<double>("profiles", prev_profiles, tt, input.verbose);
 
-      long restart_pix = (long)input.ny * (long)input.nx; // default: all done
-      bool found = false;
+  long restart_pix = (long)input.ny * (long)input.nx; // default: all done
+  bool found = false;
 
-      for (int yy = 0; yy < input.ny; ++yy) {
-        for (int xx = 0; xx < input.nx; ++xx) {
+  for (int yy = 0; yy < input.ny && !found; ++yy) {
+    for (int xx = 0; xx < input.nx; ++xx) {
 
-          // sentinel: first wavelength, Stokes-I
-          if (!found && prev_profiles(yy, xx, 0, 0) == 0.0) {
-            restart_pix = (long)yy * (long)input.nx + (long)xx;
-            found = true;
-            // don't copy this pixel (and don't copy any later pixels)
-          }
+      bool pixel_matches = true;
 
-          if (!found) {
-            // copy this pixel from checkpointed synthetic profiles into obs
-            for (int iw = 0; iw < input.nw_tot; ++iw) {
-              for (int is = 0; is < input.ns; ++is) {
-                obs(yy, xx, iw, is) = prev_profiles(yy, xx, iw, is);
-              }
-            }
+      // check full pixel: all wavelengths, all Stokes
+      for (int iw = 0; iw < input.nw_tot && pixel_matches; ++iw) {
+        for (int is = 0; is < input.ns; ++is) {
+          if (prev_profiles(yy, xx, iw, is) != obs(yy, xx, iw, is)) {
+            pixel_matches = false;
+            break;
           }
         }
       }
 
-      input.restart_pixel = restart_pix;
+      if (pixel_matches) {
+        restart_pix = (long)yy * (long)input.nx + (long)xx;
+        found = true;
+        break;
+      }
 
-      std::cerr << "master_sparse: restart enabled -> restart_pixel=" << input.restart_pixel << " (tt=" << tt << ")\n";
-
-      // load atmosphere checkpoint into im
-      im.read_model2(input, input.oatmos, tt, true);
-    } else {
-      input.restart_pixel = 0;
+      // pixel computed -> copy synthetic result into obs so later write_Tstep doesn't wipe it
+      for (int iw = 0; iw < input.nw_tot; ++iw)
+        for (int is = 0; is < input.ns; ++is)
+          obs(yy, xx, iw, is) = prev_profiles(yy, xx, iw, is);
     }
+  }
+
+  input.restart_pixel = restart_pix;
+
+          std::cerr << "master_sparse: restart enabled -> restart_pixel=" << input.restart_pixel << " (tt=" << tt << ")\n";
+
+    im.read_model2(input, input.oatmos, tt, true);
+  } else {
+    input.restart_pixel = 0;
+  }
+
 
 
 
