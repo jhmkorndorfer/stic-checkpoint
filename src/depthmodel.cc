@@ -1411,7 +1411,7 @@ void mdepthall::write_model2(iput_t const& input, string &filename, int tstep){
 
   
   /* --- Init vars & dims if firsttime --- */
-  if(firsttime){
+  if (firsttime && need_init){
 
     ofile->initDim({"time","y", "x", "ndep"}, dims);
 
